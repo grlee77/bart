@@ -77,7 +77,7 @@ static void help_reg(void)
 	);
 }
 
- 
+
 static
 const struct linop_s* sense_nc_init(const long max_dims[DIMS], const long map_dims[DIMS], const complex float* maps, const long ksp_dims[DIMS], const long traj_dims[DIMS], const complex float* traj, struct nufft_conf_s conf, _Bool use_gpu, struct operator_s** precond_op)
 {
@@ -373,7 +373,7 @@ int main_pics(int argc, char* argv[])
 	if (use_gpu)
 		debug_printf(DP_INFO, "GPU reconstruction\n");
 
-	if (map_dims[MAPS_DIM] > 1) 
+	if (map_dims[MAPS_DIM] > 1)
 		debug_printf(DP_INFO, "%ld maps.\nESPIRiT reconstruction.\n", map_dims[MAPS_DIM]);
 
 	if (hogwild)
@@ -572,7 +572,7 @@ int main_pics(int argc, char* argv[])
 			trafos[nr] = linop_identity_create(DIMS, img_dims);
 			thresh_ops[nr] = lrthresh_create(img_dims, randshift, regs[nr].xflags, (const long (*)[DIMS])blkdims, regs[nr].lambda, false, remove_mean, use_gpu);
 			break;
-       
+
 		case MLR:
 			debug_printf(DP_INFO, "multi-scale lowrank regularization: %f\n", regs[nr].lambda);
 
@@ -590,7 +590,7 @@ int main_pics(int argc, char* argv[])
                         const struct linop_s* decom_op = sum_create( img_dims, use_gpu );
                         const struct linop_s* tmp_op = forward_op;
                         forward_op = linop_chain(decom_op, forward_op);
-                        
+
                         linop_free(decom_op);
                         linop_free(tmp_op);
 
@@ -645,7 +645,7 @@ int main_pics(int argc, char* argv[])
 	long img_start_dims[DIMS];
 	complex float* image_start = NULL;
 
-	if (warm_start) { 
+	if (warm_start) {
 
 		debug_printf(DP_DEBUG1, "Warm start: %s\n", image_start_file);
 		image_start = load_cfl(image_start_file, DIMS, img_start_dims);
@@ -782,7 +782,7 @@ int main_pics(int argc, char* argv[])
 	}
 
 
-	if (use_gpu) 
+	if (use_gpu)
 #ifdef USE_CUDA
 		sense_recon2_gpu(&conf, max_dims, image, forward_op, pat_dims, pattern,
 				 italgo, iconf, nr_penalties, thresh_ops,
@@ -819,6 +819,10 @@ int main_pics(int argc, char* argv[])
 		unmap_cfl(DIMS, img_dims, image_truth);
 	}
 
+	for (int nr = 0; nr < nr_penalties; nr++) {
+        operator_p_free(thresh_ops[nr]);
+        linop_free(trafos[nr]);
+	}
 
 	double end_time = timestamp();
 
