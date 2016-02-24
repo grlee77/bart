@@ -71,7 +71,8 @@ int main_poisson(int argc, char* argv[])
 	float yscale = 1.;
 	float zscale = 1.;
 	unsigned int calreg = 0;
-
+	int max_retry = 30;
+	float vd_power = 2;
 	const struct opt_s opts[] = {
 
 		OPT_INT('Y', &yy, "size", "size dimension 1"),
@@ -85,6 +86,8 @@ int main_poisson(int argc, char* argv[])
 		OPT_FLOAT('D', &mindist, "", "()"),
 		OPT_INT('T', &T, "", "()"),
 		OPT_CLEAR('m', &msk, "()"),
+		OPT_INT('k', &max_retry, "", "maximum retry"),
+		OPT_FLOAT('p', &vd_power, "", "variable density power scaling"),
 		OPT_INT('R', &points, "", "()"),
 	};
 
@@ -96,6 +99,17 @@ int main_poisson(int argc, char* argv[])
 	if (-1 != points)
 		rnd = 1;
 
+	if (vardensity > 0.){
+		float center[2] = {0.5, 0.5};
+		float pt1[2] = {0.5, 0.75};  // halfway to edge
+		float edge[2] = {0.5, 1};
+		float corner[2] = {1, 1};
+		printf("\nVARIABLE DENSITY:\n");
+		printf("\trelative density at k-space center (0.5, 0.5): %f\n", vard_scale(2, center, vardensity, vd_power));
+		printf("\trelative density at k-space offcenter (0.5, 0.75): %f\n", vard_scale(2, pt1, vardensity, vd_power));
+		printf("\trelative density at k-space edge (0.5, 1.0): %f\n", vard_scale(2, edge, vardensity, vd_power));
+		printf("\trelative density at k-space corner (1.0, 1.0): %f\n\n", vard_scale(2, corner, vardensity, vd_power));
+	}
 
 	assert((yscale >= 1.) && (zscale >= 1.));
 
@@ -141,7 +155,7 @@ int main_poisson(int argc, char* argv[])
 
 			if (1 == T) {
 
-				P = poissondisc(2, M, 1, vardensity, mindist, *points);
+				P = poissondisc(2, M, 1, vardensity, mindist, *points, max_retry, vd_power);
 
 			} else {
 
@@ -151,7 +165,7 @@ int main_poisson(int argc, char* argv[])
 					dd[i] = mindist;
 
 				mc_poisson_rmatrix(2, T, *delta, dd);
-				P = poissondisc_mc(2, T, M, 1, vardensity, *delta, *points, *kind);
+				P = poissondisc_mc(2, T, M, 1, vardensity, *delta, *points, *kind, max_retry, vd_power);
 			}
 
 		} else { // random pattern

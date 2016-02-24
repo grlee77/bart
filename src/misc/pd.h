@@ -7,17 +7,18 @@
 #error This file does not support C++
 #endif
 
-extern int poissondisc(int D, int N, int II, float vardens, float delta, float points[static N][D]);
+extern int poissondisc(int D, int N, int II, float vardens, float delta, float points[static N][D], int max_retry, float vd_power);
 extern int poissondisc_mc(int D, int T, int N, int II, float vardens,
-	const float delta[static T][T], float points[static N][D], int kind[static N]);
+	const float delta[static T][T], float points[static N][D], int kind[static N], int max_retry, float vd_power);
 
 extern void mc_poisson_rmatrix(int D, int T, float rmatrix[static T][T], const float delta[static T]);
+extern float vard_scale(int D, const float p[D], float vard, float vd_power);
 
 #if __GNUC__ < 5
 #include "misc/pcaa.h"
 
-#define poissondisc_mc(A, B, C, D, E, x, y, z) \
-	poissondisc_mc(A, B, C, D, E, AR2D_CAST(float, B, B, x), y, z)
+#define poissondisc_mc(A, B, C, D, E, x, y, z,  r, p) \
+	poissondisc_mc(A, B, C, D, E, AR2D_CAST(float, B, B, x), y, z, r, p)
 
 #endif
 

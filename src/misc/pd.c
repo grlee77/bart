@@ -48,22 +48,22 @@ static void grid_pos(int D, long pos[D], float delta, const float fpos[D])
 }
 #endif
 
-static float vard_scale(int D, const float p[D], float vard)
+float vard_scale(int D, const float p[D], float vard, float vd_power)
 {
 	float cen[D];
 	for (int i = 0; i < D; i++)
 		cen[i] = 0.5;
 
-	return 1. + powf(dist(D, cen, p), 2.) * vard;
+	return 1. + powf(dist(D, cen, p), vd_power) * vard;
 }
 
-static bool distance_check(int D, int T, int N, float vard, const float delta[T][T], /*const*/ float points[N][D], const int kind[N], int a, int b)
+static bool distance_check(int D, int T, int N, float vard, const float delta[T][T], /*const*/ float points[N][D], const int kind[N], int a, int b, float vd_power)
 {
-	return dist(D, points[a], points[b]) > vard_scale(D, points[a], vard) * delta[kind[a]][kind[b]];
+	return dist(D, points[a], points[b]) > vard_scale(D, points[a], vard, vd_power) * delta[kind[a]][kind[b]];
 }
 
 
-int (poissondisc_mc)(int D, int T, int N, int I, float vardens, const float delta[T][T], float points[N][D], int kind[N])
+int (poissondisc_mc)(int D, int T, int N, int I, float vardens, const float delta[T][T], float points[N][D], int kind[N], int max_retry, float vd_power)
 {
 	PTR_ALLOC(char[N], active);
 
@@ -73,7 +73,7 @@ int (poissondisc_mc)(int D, int T, int N, int I, float vardens, const float delt
 	memset(*active, 0, N * sizeof(char));
 	memset(*active, 1, I * sizeof(char));
 
-	int k = 30;
+	int k = max_retry;
 	int p = I;
 	int a = I;
 
@@ -96,7 +96,7 @@ int (poissondisc_mc)(int D, int T, int N, int I, float vardens, const float delt
 	for (int i = 0; i < D; i++)
 		corner[i] = 0.;
 
-	maxdelta *= vard_scale(D, corner, vardens);
+	maxdelta *= vard_scale(D, corner, vardens, vd_power);
 	mindelta /= sqrtf((float)D);
 
 	long patchdims[D];
@@ -167,7 +167,7 @@ int (poissondisc_mc)(int D, int T, int N, int I, float vardens, const float delt
 				kind[p] = rr++ % T;
 				dd = delta[kind[s2]][kind[p]];
 
- 				dd *= vard_scale(D, points[s2], vardens);
+ 				dd *= vard_scale(D, points[s2], vardens, vd_power);
 
 				for (int j = 0; j < D; j++) {
 
@@ -192,7 +192,7 @@ int (poissondisc_mc)(int D, int T, int N, int I, float vardens, const float delt
 
 			if (-1 != grid[index]) {
 
-				assert(!distance_check(D, T, N, vardens, delta, points, kind, p, grid[index]));
+				assert(!distance_check(D, T, N, vardens, delta, points, kind, p, grid[index], vd_power));
 				accept = false;
 			}
 
@@ -206,7 +206,7 @@ int (poissondisc_mc)(int D, int T, int N, int I, float vardens, const float delt
 
 				for (int i = 0; i < md_calc_size(D, patchdims); i++)
 					if (-1 != patch[i])
-						accept &= distance_check(D, T, N, vardens, delta, points, kind, p, patch[i]);
+						accept &= distance_check(D, T, N, vardens, delta, points, kind, p, patch[i], vd_power);
 			}
 
 #endif
@@ -215,14 +215,14 @@ int (poissondisc_mc)(int D, int T, int N, int I, float vardens, const float delt
 			bool accept2 = true;
 
 			for (int j = 0; j < p; j++)
-				accept2 &= distance_check(D, T, N, vardens, delta, points, kind, p, j);
+				accept2 &= distance_check(D, T, N, vardens, delta, points, kind, p, j, vd_power);
 
 			assert(accept == accept2);
 #endif
 
 #ifndef GRID
 			for (int j = 0; j < p; j++)
-				accept &= distance_check(D, T, N, vardens, delta, points, kind, p, j);
+				accept &= distance_check(D, T, N, vardens, delta, points, kind, p, j, vd_power);
 #endif
 
 			if (accept) {
@@ -265,12 +265,12 @@ out:
 
 
 
-extern int poissondisc(int D, int N, int I, float vardens, float delta, float points[N][D])
+extern int poissondisc(int D, int N, int I, float vardens, float delta, float points[N][D], int max_retry, float vd_power)
 {
 	PTR_ALLOC(int[N], kind);
 	memset(*kind, 0, I * sizeof(int));
 	const float dd[1][1] = { { delta } };
-	int P = poissondisc_mc(D, 1, N, I, vardens, dd, points, *kind);
+	int P = poissondisc_mc(D, 1, N, I, vardens, dd, points, *kind, max_retry, vd_power);
 	free(kind);
 	return P;
 }
