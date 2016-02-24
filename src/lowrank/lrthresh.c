@@ -1,14 +1,15 @@
 /* Copyright 2015. The Regents of the University of California.
  * Copyright 2015. Tao Zhang and Joseph Cheng.
  * All rights reserved. Use of this source code is governed by
- * a BSD-style license which can be found in the LICENSE file.
+ * a educational/research license which can be found in the
+ * LICENSE file.
  *
- * Authors: 
+ * Authors:
  * 2014-2015 Frank Ong <frankong@berkeley.edu>
  * 2014 Tao Zhang
- * 2014 Joseph Cheng 
- * 2014 Jon Tamir 
- * 2014 Martin Uecker 
+ * 2014 Joseph Cheng
+ * 2014 Jon Tamir
+ * 2014 Martin Uecker
  */
 
 #include <stdlib.h>
@@ -39,11 +40,11 @@
 
 struct lrthresh_data_s {
 
-	float lambda;
+	float lmbda;
 	bool randshift;
 	bool use_gpu;
 	bool noise;
-	int remove_mean; 
+	int remove_mean;
 
 	long strs_lev[DIMS];
 	long strs[DIMS];
@@ -59,9 +60,9 @@ struct lrthresh_data_s {
 
 
 
-static struct lrthresh_data_s* lrthresh_create_data(const long dims_decom[DIMS], bool randshift, unsigned long mflags, const long blkdims[MAX_LEV][DIMS], float lambda, bool noise, int remove_mean, bool use_gpu);
+static struct lrthresh_data_s* lrthresh_create_data(const long dims_decom[DIMS], bool randshift, unsigned long mflags, const long blkdims[MAX_LEV][DIMS], float lmbda, bool noise, int remove_mean, bool use_gpu);
 static void lrthresh_free_data(const void* data);
-static void lrthresh_apply(const void* _data, float lambda, complex float* dst, const complex float* src);
+static void lrthresh_apply(const void* _data, float lmbda, complex float* dst, const complex float* src);
 
 
 
@@ -75,9 +76,9 @@ static void lrthresh_apply(const void* _data, float lambda, complex float* dst, 
  * @param use_gpu - gpu boolean
  *
  */
-const struct operator_p_s* lrthresh_create(const long dims_lev[DIMS], bool randshift, unsigned long mflags, const long blkdims[MAX_LEV][DIMS], float lambda, bool noise, int remove_mean, bool use_gpu)
+const struct operator_p_s* lrthresh_create(const long dims_lev[DIMS], bool randshift, unsigned long mflags, const long blkdims[MAX_LEV][DIMS], float lmbda, bool noise, int remove_mean, bool use_gpu)
 {
-	struct lrthresh_data_s* data = lrthresh_create_data(dims_lev, randshift, mflags, blkdims, lambda, noise, remove_mean, use_gpu);
+	struct lrthresh_data_s* data = lrthresh_create_data(dims_lev, randshift, mflags, blkdims, lmbda, noise, remove_mean, use_gpu);
 
 	return operator_p_create(DIMS, dims_lev, DIMS, dims_lev, data, lrthresh_apply, lrthresh_free_data);
 }
@@ -94,13 +95,13 @@ const struct operator_p_s* lrthresh_create(const long dims_lev[DIMS], bool rands
  * @param use_gpu - gpu boolean
  *
  */
-static struct lrthresh_data_s* lrthresh_create_data(const long dims_decom[DIMS], bool randshift, unsigned long mflags, const long blkdims[MAX_LEV][DIMS], float lambda, bool noise, int remove_mean, bool use_gpu)
+static struct lrthresh_data_s* lrthresh_create_data(const long dims_decom[DIMS], bool randshift, unsigned long mflags, const long blkdims[MAX_LEV][DIMS], float lmbda, bool noise, int remove_mean, bool use_gpu)
 {
 	PTR_ALLOC(struct lrthresh_data_s, data);
 
 	data->randshift = randshift;
 	data->mflags = mflags;
-	data->lambda = lambda;
+	data->lmbda = lmbda;
 	data->noise = noise;
 	data->remove_mean = remove_mean;
 
@@ -121,7 +122,7 @@ static struct lrthresh_data_s* lrthresh_create_data(const long dims_decom[DIMS],
 	}
 
 	data->use_gpu = use_gpu;
-	
+
 	return data;
 }
 
@@ -145,7 +146,7 @@ static int rand_lim(int limit)
 	int divisor = RAND_MAX / (limit + 1);
 	int retval;
 
-	do { 
+	do {
 		retval = rand() / divisor;
 
 	} while (retval > limit);
@@ -162,7 +163,7 @@ static void lrthresh_apply(const void* _data, float mu, complex float* dst, cons
 {
 	struct lrthresh_data_s* data = (struct lrthresh_data_s*)_data;
 
-	float lambda = mu * data->lambda;
+	float lmbda = mu * data->lmbda;
 
 	long strs1[DIMS];
 	md_calc_strides(DIMS, strs1, data->dims_decom, 1);
@@ -212,9 +213,10 @@ static void lrthresh_apply(const void* _data, float mu, complex float* dst, cons
 			B = 1;
 		}
 
-		
+
 		// Initialize tmp
 		complex float* tmp_ext;
+		debug_printf(DP_DEBUG1, "lrthresh_apply: prior to first alloc\n");
 #ifdef USE_CUDA
 		tmp_ext = (data->use_gpu ? md_alloc_gpu : md_alloc)(DIMS, zpad_dims, CFL_SIZE);
 #else
@@ -227,9 +229,11 @@ static void lrthresh_apply(const void* _data, float mu, complex float* dst, cons
 #else
 		tmp = md_alloc(DIMS, zpad_dims, CFL_SIZE);
 #endif
+		debug_printf(DP_DEBUG1, "lrthresh_apply: prior to md_circ_ext\n");
 		// Copy to tmp
 		md_circ_ext(DIMS, zpad_dims, tmp_ext, data->dims, srcl, CFL_SIZE);
 
+		debug_printf(DP_DEBUG1, "lrthresh_apply: prior to md_circ_shift\n");
 		if (data->randshift)
 			md_circ_shift(DIMS, zpad_dims, shifts, tmp, tmp_ext, CFL_SIZE);
 
@@ -244,14 +248,20 @@ static void lrthresh_apply(const void* _data, float mu, complex float* dst, cons
 		tmp_mat = md_alloc(2, mat_dims, CFL_SIZE);
 #endif
 		// Reshape image into a blk_size x number of blocks matrix
-
+		debug_printf(DP_DEBUG1, "lrthresh_apply: prior to basorati_matrix\n");
 		basorati_matrix(DIMS, blkdims, mat_dims, tmp_mat, zpad_dims, zpad_strs, tmp);
 
-		batch_svthresh(M, N, mat_dims[1], lambda * GWIDTH(M, N, B), tmp_mat, tmp_mat);
-
+		debug_printf(DP_DEBUG1, "lrthresh_apply: prior to batch_svthresh\n");
+		debug_printf(DP_DEBUG1, "lrthresh_apply: M = %ld, N=%ld, mat_dims[0]=%ld, mat_dims[1]=%ld\n", M, N, mat_dims[0], mat_dims[1]);
+#ifdef USE_CUDA
+		(data->use_gpu ? batch_svthresh_gpu : batch_svthresh)(M, N, mat_dims[1], lmbda * GWIDTH(M, N, B), tmp_mat, tmp_mat);
+#else
+		batch_svthresh(M, N, mat_dims[1], lmbda * GWIDTH(M, N, B), tmp_mat, tmp_mat);
+#endif
 		//	for ( int b = 0; b < mat_dims[1]; b++ )
-		//	svthresh(M, N, lambda * GWIDTH(M, N, B), tmp_mat, tmp_mat);
+		//	svthresh(M, N, lmbda * GWIDTH(M, N, B), tmp_mat, tmp_mat);
 
+		debug_printf(DP_DEBUG1, "lrthresh_apply: prior to basorati_matrixH\n");
 		basorati_matrixH(DIMS, blkdims, zpad_dims, zpad_strs, tmp, mat_dims, tmp_mat);
 
 
@@ -302,7 +312,7 @@ float lrnucnorm(const struct operator_p_s* op, const complex float* src)
 
 			for (long j = 0; j < md_calc_size(DIMS, data->dims); j++)
 				nnorm += 2 * cabsf(srcl[j]);
-				
+
 			continue;
 		}
 
@@ -390,7 +400,7 @@ long multilr_blkdims(long blkdims[MAX_LEV][DIMS], unsigned long flags, const lon
 				done = done && (blkdims[levels - 1][i] == idims[i]);
 			}
 		}
-		
+
 	} while(!done);
 
 	return levels;
@@ -401,7 +411,7 @@ long multilr_blkdims(long blkdims[MAX_LEV][DIMS], unsigned long flags, const lon
 void add_lrnoiseblk(long* levels, long blkdims[MAX_LEV][DIMS], const long idims[DIMS])
 {
 	levels[0]++;
-		
+
 	debug_printf(DP_DEBUG1, "[\t");
 
 	for (unsigned int i = 0; i < DIMS; i++) {
@@ -461,8 +471,8 @@ long ls_blkdims(long blkdims[MAX_LEV][DIMS], const long idims[DIMS])
 }
 
 
-float get_lrthresh_lambda(const struct operator_p_s* o)
+float get_lrthresh_lmbda(const struct operator_p_s* o)
 {
 	const struct lrthresh_data_s* data = operator_p_get_data(o);
-	return data->lambda;
+	return data->lmbda;
 }

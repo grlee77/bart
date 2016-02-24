@@ -15,7 +15,7 @@ MAKEFLAGS += -R
 # use for parallel make
 AR=./ar_lock.sh
 
-CUDA?=0
+CUDA?=1
 ACML?=0
 OMP?=1
 SLINK?=0
@@ -78,7 +78,7 @@ CXX ?= g++
 
 # cuda
 
-CUDA_BASE ?= /usr/local/
+CUDA_BASE ?= /usr/local/cuda
 
 
 # acml
@@ -207,13 +207,13 @@ ifeq ($(CUDA),1)
 CUDA_H := -I$(CUDA_BASE)/include
 CPPFLAGS += -DUSE_CUDA $(CUDA_H)
 ifeq ($(BUILDTYPE), MacOSX)
-CUDA_L := -L$(CUDA_BASE)/lib -lcufft -lcudart -lcublas -m64 -lstdc++
+CUDA_L := -L$(CUDA_BASE)/lib -lcufft -lcudart -lcublas -lcusolver -m64 -lstdc++
 else
-CUDA_L := -L$(CUDA_BASE)/lib64 -lcufft -lcudart -lcublas -lstdc++ -Wl,-rpath $(CUDA_BASE)/lib64
-endif 
+CUDA_L := -L$(CUDA_BASE)/lib64 -lcufft -lcudart -lcublas -lcusolver -lstdc++ -Wl,-rpath $(CUDA_BASE)/lib64
+endif
 else
 CUDA_H :=
-CUDA_L :=  
+CUDA_L :=
 endif
 
 NVCCFLAGS = -DUSE_CUDA -Xcompiler -fPIC -Xcompiler -fopenmp -O3 -arch=sm_20 -I$(srcdir)/ -m64 -ccbin $(CC)
