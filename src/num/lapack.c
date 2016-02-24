@@ -153,7 +153,7 @@ void batch_svthresh_gpu(long M, long N, long num_blocks, float lmbda, complex fl
                             			CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_N,
                             			M, N,
 			                            &alpha,
-			                            (const cuComplex*)src_b, M,
+			                            src_b, M,
 			                            &beta,
 			                            AA, minMN);
 			// csyrk_("U", "N", &M, &N, &(const complex float){ 1. }, (const complex float (*)[])src_b, &M, &(const complex float){ 0. }, (const complex float (*)[])AA, &minMN);
@@ -162,23 +162,24 @@ void batch_svthresh_gpu(long M, long N, long num_blocks, float lmbda, complex fl
 			                			CUBLAS_FILL_MODE_UPPER, CUBLAS_OP_T,
 			                			N, M,
 							            &alpha,
-							            (const cuComplex*)src_b, M,
+							            src_b, M,
 							            &beta,
 							            AA, minMN);
 			// csyrk_("U", "T", &N, &M, &(const complex float){ 1. }, (const complex float(*)[])src_b, &M, &(const complex float){ 0. }, (const complex float (*)[]) AA, &minMN);
-
+		debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cublasCsyrk completed\n");
 
 		// lmbda_max( A ) <= max_i sum_j | a_i^T a_j |
-		for (int i = 0; i < minMN; i++)
-		{
-			float s = 0;
+		// for (int i = 0; i < minMN; i++)
+		// {
+		// 	float s = 0;
 
-			for (int j = 0; j < minMN; j++)  //minMN; j++)
-			 	s += cuCabsf(AA[MIN(i, j) + MAX(i, j) * minMN]);
+		// 	for (int j = 0; j < minMN; j++)  //minMN; j++)
+		// 	 	s += cuCabsf(AA[MIN(i, j) + MAX(i, j) * minMN]);
 
-			s_upperbound = MAX(s_upperbound, s);
-		}
-
+		// 	s_upperbound = MAX(s_upperbound, s);
+		// }
+		// s_upperbound = 10000000;
+		debug_printf(DP_DEBUG1, "batch_svthresh_gpu: s_upperbound completed\n");
 		// THIS RUNS OKAY, BUT SOMEHOW THE LOOP BELOW FAILS
 		// cusolver_status = cusolverDnCgesvd(cusolverDnH, 'S', 'S', M, N,
 		// 						           src_b, M, S, U, M,
@@ -186,14 +187,16 @@ void batch_svthresh_gpu(long M, long N, long num_blocks, float lmbda, complex fl
 		// 						           &devInfo);
 
 
-		debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cublasCsyrk completed");
+
 		if (s_upperbound < lmbda * lmbda) {
 
 			// //debug_printf(DP_DEBUG1, "batch_svthresh_gpu: Lwork = %d\n", Lwork);
 			// //for (int i = 0; i < M * N; i++)
 			// //	dst_b[i] = 0;
 			// cudaMemset(dst_b, 0, M * N * sizeof(cuComplex));
-			// ///cuda_clear(M * N * sizeof(complex float), dst_b);
+			debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cuda_clear ready\n");
+			cuda_clear(M * N * sizeof(complex float), dst_b);
+			debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cuda_clear completed\n");
 
 		} else {
 
@@ -203,6 +206,7 @@ void batch_svthresh_gpu(long M, long N, long num_blocks, float lmbda, complex fl
 									           src_b, M, S, U, M,
 									           VT, minMN, work, Lwork, rwork,
 									           &devInfo);
+			debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cusolverDnCgesvd completed\n");
 
 			// Soft Threshold
 			for (int i = 0; i < minMN; i++ ) {
@@ -216,7 +220,7 @@ void batch_svthresh_gpu(long M, long N, long num_blocks, float lmbda, complex fl
 					VT[i + j * minMN].y *= s;
 				}
 			}
-
+			debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cublasCgemm ready");
 			cublas_status = cublasCgemm(cublasH,
 										CUBLAS_OP_N, CUBLAS_OP_N,
 										M, N, minMN,
@@ -225,6 +229,7 @@ void batch_svthresh_gpu(long M, long N, long num_blocks, float lmbda, complex fl
 										VT, minMN,
 										&beta,
 										dst_b, M);
+			debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cublasCgemm completed");
 			// cgemm_("N", "N", &M, &N, &minMN, &(complex float){ 1. }, (const complex float (*)[])U, &M, (const complex float (*)[])VT, &minMN, &(complex float){ 0. }, (complex float (*)[])dst_b, &M);
 		}
 	}
