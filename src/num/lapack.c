@@ -20,9 +20,12 @@
 
 #ifdef USE_CUDA
 #include "num/gpuops.h"
+#include "num/gpukrnls.h"
 
 #include <cublas_v2.h>
 #include <cusolverDn.h>
+
+
 #endif
 
 
@@ -75,6 +78,7 @@ void batch_svthresh_gpu(long M, long N, long num_blocks, float lmbda, complex fl
     cublasHandle_t cublasH = NULL;
     cublasStatus_t cublas_status = CUBLAS_STATUS_SUCCESS;
     cusolverStatus_t cusolver_status = CUSOLVER_STATUS_SUCCESS;
+    cudaError_t cudaStat1 = cudaSuccess;
 
 	// create cudense/cublas handles
     cusolver_status = cusolverDnCreate(&cusolverDnH);
@@ -94,12 +98,9 @@ void batch_svthresh_gpu(long M, long N, long num_blocks, float lmbda, complex fl
 	cuComplex *VT = NULL;
 	float *S = NULL;
 	cuComplex *AA = NULL;
-    cuComplex alpha;  //1 + 0j //= make_float2(1.0,0.0);
-    cuComplex beta;  //0 + 0j   = make_float2(0.0,0.0);
-    alpha.x = 1;
-    alpha.y = 0;
-	beta.x = 0;
-    beta.y = 0;
+	complex float *AAhost = NULL;
+    cuComplex alpha = make_cuFloatComplex(1.0, 0.0);
+    cuComplex beta = make_cuFloatComplex(0.0, 0.0);
 
     // TODO: switch U, VT to complex float and typecast as (cuComplex *) in calls to cusolver/cublas funcs
 
@@ -108,6 +109,7 @@ void batch_svthresh_gpu(long M, long N, long num_blocks, float lmbda, complex fl
 	VT = cuda_malloc(minMN * N * sizeof(cuComplex));
 	S = cuda_malloc(minMN * sizeof(float));
 	AA = cuda_malloc(minMN * minMN * sizeof(cuComplex));
+	AAhost = xmalloc(minMN * minMN * sizeof(cuComplex));
 
 	// // create lrwork
 
@@ -165,21 +167,40 @@ void batch_svthresh_gpu(long M, long N, long num_blocks, float lmbda, complex fl
 							            src_b, M,
 							            &beta,
 							            AA, minMN);
+		cudaStat1 = cudaDeviceSynchronize();
+		assert(CUBLAS_STATUS_SUCCESS == cublas_status);
+		assert(cudaSuccess == cudaStat1);
+
 			// csyrk_("U", "T", &N, &M, &(const complex float){ 1. }, (const complex float(*)[])src_b, &M, &(const complex float){ 0. }, (const complex float (*)[]) AA, &minMN);
-		debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cublasCsyrk completed\n");
+		// lmbda_max( A ) <= max_i sum_j | a_i^T a_j |
+		debug_printf(DP_DEBUG1, "batch_svthresh_gpu: device memcopy ready\n");
+		cudaStat1 = cudaMemcpy(AAhost, AA, minMN * minMN * sizeof(cuComplex), cudaMemcpyDeviceToHost);
+		debug_printf(DP_DEBUG1, "batch_svthresh_gpu: device memcopy completed\n");
+		assert(cudaSuccess == cudaStat1);
+		float s_upperbound_host = 0;
+		for (int i = 0; i < minMN; i++)
+		{
+		 	float s = 0;
+
+		 	for (int j = 0; j < minMN; j++)  //minMN; j++)
+		 	 	s += cabsf(AAhost[MIN(i, j) + MAX(i, j) * minMN]);
+
+		 	s_upperbound_host = MAX(s_upperbound_host, s);
+		}
 
 		// lmbda_max( A ) <= max_i sum_j | a_i^T a_j |
-		// for (int i = 0; i < minMN; i++)
-		// {
-		// 	float s = 0;
+		if (0) {
+			cuda_upperbound(minMN, &s_upperbound, (const complex float*)AA);
+			cudaStat1 = cudaDeviceSynchronize();
+			assert(cudaSuccess == cudaStat1);
+		} else {
+			s_upperbound = s_upperbound_host;
+		}
 
-		// 	for (int j = 0; j < minMN; j++)  //minMN; j++)
-		// 	 	s += cuCabsf(AA[MIN(i, j) + MAX(i, j) * minMN]);
-
-		// 	s_upperbound = MAX(s_upperbound, s);
-		// }
 		// s_upperbound = 10000000;
 		debug_printf(DP_DEBUG1, "batch_svthresh_gpu: s_upperbound completed\n");
+		debug_printf(DP_DEBUG1, "batch_svthresh_gpu: s_upperbound = %f\n", s_upperbound);
+		debug_printf(DP_DEBUG1, "batch_svthresh_gpu: s_upperbound_host = %f\n", s_upperbound_host);
 		// THIS RUNS OKAY, BUT SOMEHOW THE LOOP BELOW FAILS
 		// cusolver_status = cusolverDnCgesvd(cusolverDnH, 'S', 'S', M, N,
 		// 						           src_b, M, S, U, M,
@@ -195,31 +216,42 @@ void batch_svthresh_gpu(long M, long N, long num_blocks, float lmbda, complex fl
 			// //	dst_b[i] = 0;
 			// cudaMemset(dst_b, 0, M * N * sizeof(cuComplex));
 			debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cuda_clear ready\n");
-			cuda_clear(M * N * sizeof(complex float), dst_b);
-			debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cuda_clear completed\n");
+			//cuda_clear(M * N * sizeof(complex float), dst_b);
+			// debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cuda_clear completed\n");
 
 		} else {
 
 
 			//cgesvd_("S", "S", &M, &N, (complex float (*)[])src_b, &M, S, (complex float (*)[])U, &M, (complex float (*)[]) VT, &minMN, work, &lwork, rwork, iwork, &info);
+			debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cusolverDnCgesvd ready\n");
 			cusolver_status = cusolverDnCgesvd(cusolverDnH, 'S', 'S', M, N,
 									           src_b, M, S, U, M,
 									           VT, minMN, work, Lwork, rwork,
 									           &devInfo);
-			debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cusolverDnCgesvd completed\n");
-
-			// Soft Threshold
-			for (int i = 0; i < minMN; i++ ) {
-
-				float s = S[i] - lmbda;
-
-				s = (s + fabsf(s)) / 2.;
-
-				for ( int j = 0; j < N; j++ )  {
-					VT[i + j * minMN].x *= s;
-					VT[i + j * minMN].y *= s;
-				}
+			cudaStat1 = cudaDeviceSynchronize();
+			debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cusolverDnCgesvd status = %d\n", cusolver_status);
+			if (cusolver_status == CUSOLVER_STATUS_INTERNAL_ERROR)
+				debug_printf(DP_DEBUG1, "batch_svthresh_gpu: internal error in cusolverDnCgesvd = %d\n", cusolver_status);
+				// TODO: appropriate fallback in this case
+			else {
+				assert(CUSOLVER_STATUS_SUCCESS == cusolver_status);
+				assert(cudaSuccess == cudaStat1);
+				debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cusolverDnCgesvd completed\n");
 			}
+
+
+			// // Soft Threshold
+			// for (int i = 0; i < minMN; i++ ) {
+
+			// 	float s = S[i] - lmbda;
+
+			// 	s = (s + fabsf(s)) / 2.;
+
+			// 	for ( int j = 0; j < N; j++ )  {
+			// 		VT[i + j * minMN].x *= s;
+			// 		VT[i + j * minMN].y *= s;
+			// 	}
+			// }
 			debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cublasCgemm ready");
 			cublas_status = cublasCgemm(cublasH,
 										CUBLAS_OP_N, CUBLAS_OP_N,
@@ -229,6 +261,9 @@ void batch_svthresh_gpu(long M, long N, long num_blocks, float lmbda, complex fl
 										VT, minMN,
 										&beta,
 										dst_b, M);
+			cudaStat1 = cudaDeviceSynchronize();
+			assert(CUBLAS_STATUS_SUCCESS == cublas_status);
+			assert(cudaSuccess == cudaStat1);
 			debug_printf(DP_DEBUG1, "batch_svthresh_gpu: cublasCgemm completed");
 			// cgemm_("N", "N", &M, &N, &minMN, &(complex float){ 1. }, (const complex float (*)[])U, &M, (const complex float (*)[])VT, &minMN, &(complex float){ 0. }, (complex float (*)[])dst_b, &M);
 		}
@@ -241,6 +276,9 @@ void batch_svthresh_gpu(long M, long N, long num_blocks, float lmbda, complex fl
 	cuda_free(VT);
 	cuda_free(S);
 	cuda_free(AA);
+	free(AAhost);
+	if (cublasH ) cublasDestroy(cublasH);
+	if (cusolverDnH ) cusolverDnDestroy(cusolverDnH);
 
 }
 

@@ -1,12 +1,12 @@
 /* Copyright 2013-2015. The Regents of the University of California.
- * All rights reserved. Use of this source code is governed by 
+ * All rights reserved. Use of this source code is governed by
  * a BSD-style license which can be found in the LICENSE file.
  *
  * Authors:
  * 2012-03-24 Martin Uecker <uecker@eecs.berkeley.edu>
  * 2015 Jonathan Tamir <jtamir@eecs.berkeley.edu>
  *
- * 
+ *
  * This file defines basic operations on vectors of floats/complex floats
  * for operations on the GPU. See the CPU version (vecops.c) for more
  * information.
@@ -54,7 +54,7 @@ static int blocksize(int N)
 {
 	int warps_total = (N + WARPSIZE - 1) / WARPSIZE;
 	int warps_block = MAX(1, MIN(4, warps_total));
-	
+
 	return WARPSIZE * warps_block;
 }
 
@@ -62,7 +62,7 @@ static int gridsize(int N)
 {
 	int warps_total = (N + WARPSIZE - 1) / WARPSIZE;
 	int warps_block = MAX(1, MIN(4, warps_total));
-	
+
 	return MIN(MAXBLOCKS, MAX(1, warps_total / warps_block));
 }
 #endif
@@ -372,7 +372,7 @@ __device__ cuFloatComplex zlog(cuFloatComplex x)
 }
 
 
-// x^y = e^{y ln(x)} = e^{y 
+// x^y = e^{y ln(x)} = e^{y
 __device__ cuFloatComplex zpow(cuFloatComplex x, cuFloatComplex y)
 {
 	return zexp(cuCmulf(y, zlog(x)));
@@ -729,3 +729,35 @@ extern "C" void cuda_min(long N, float* dst, const float* src1, const float* src
 }
 
 
+__device__ __forceinline__ int floatToOrderedInt( float floatVal ) {
+    int intVal = __float_as_int( floatVal );
+    return (intVal >= 0 ) ? intVal : intVal ^ 0x7FFFFFFF;
+}
+
+__device__ __forceinline__ float orderedIntToFloat( int intVal ) {
+    return __int_as_float( (intVal >= 0) ? intVal : intVal ^ 0x7FFFFFFF);
+}
+
+__global__ void kern_upperbound(int minMN, float *s_upperbound, const cuFloatComplex* AA)
+{
+	int start = threadIdx.x + blockDim.x * blockIdx.x;
+	int stride = blockDim.x * gridDim.x;
+	__shared__ int s1;
+	s1 = floatToOrderedInt(s_upperbound[0]);
+	for (int i = start; i < minMN; i += stride) {
+
+		float s = 0;
+		int s2;
+	 	for (int j = 0; j < minMN; j++)  //minMN; j++)
+	 	 	s += cuCabsf(AA[MIN(i, j) + MAX(i, j) * minMN]);
+	 	s2 = floatToOrderedInt(s);
+	 	atomicMax(&s1, s2);
+	}
+	__syncthreads();
+	s_upperbound[0] = orderedIntToFloat(s1);
+}
+
+extern "C" void cuda_upperbound(long N, float* d, const _Complex float* x)
+{
+	kern_upperbound<<<gridsize(N), blocksize(N)>>>(N, d, (cuFloatComplex*)x);
+}

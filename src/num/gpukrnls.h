@@ -1,5 +1,5 @@
 /* Copyright 2013. The Regents of the University of California.
- * All rights reserved. Use of this source code is governed by 
+ * All rights reserved. Use of this source code is governed by
  * a BSD-style license which can be found in the LICENSE file.
  */
 
@@ -32,18 +32,19 @@ extern void cuda_zconj(long N, _Complex float* dst, const _Complex float* src);
 extern void cuda_zphsr(long N, _Complex float* dst, const _Complex float* src);
 extern void cuda_zexpj(long N, _Complex float* dst, const _Complex float* src);
 extern void cuda_zarg(long N, _Complex float* dst, const _Complex float* src);
-extern void cuda_zsoftthresh_half(long N, float lambda, _Complex float* d, const _Complex float* x);
-extern void cuda_zsoftthresh(long N, float lambda, _Complex float* d, const _Complex float* x);
-extern void cuda_softthresh_half(long N, float lambda, float* d, const float* x);
-extern void cuda_softthresh(long N, float lambda, float* d, const float* x);
+extern void cuda_zsoftthresh_half(long N, float lmbda, _Complex float* d, const _Complex float* x);
+extern void cuda_zsoftthresh(long N, float lmbda, _Complex float* d, const _Complex float* x);
+extern void cuda_softthresh_half(long N, float lmbda, float* d, const float* x);
+extern void cuda_softthresh(long N, float lmbda, float* d, const float* x);
 extern void cuda_zreal(long N, _Complex float* dst, const _Complex float* src);
 extern void cuda_zcmp(long N, _Complex float* dst, const _Complex float* src1, const _Complex float* src2);
-extern void cuda_zdiv_reg(long N, _Complex float* dst, const _Complex float* src1, const _Complex float* src2, _Complex float lambda);
+extern void cuda_zdiv_reg(long N, _Complex float* dst, const _Complex float* src1, const _Complex float* src2, _Complex float lmbda);
 extern void cuda_le(long N, float* dst, const float* src1, const float* src2);
 extern void cuda_ge(long N, float* dst, const float* src1, const float* src2);
 extern void cuda_zfftmod(long N, _Complex float* dst, const _Complex float* src, unsigned int n, _Bool inv, double phase);
 extern void cuda_max(long N, float* dst, const float* src1, const float* src2);
 extern void cuda_min(long N, float* dst, const float* src1, const float* src2);
+extern void cuda_upperbound(long N, float* d, const _Complex float* x);
 
 #ifdef __cplusplus
 }
